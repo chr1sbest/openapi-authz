@@ -26,7 +26,27 @@ focuses on validating tokens and applying policies in one place.
 go install github.com/chr1sbest/openapi-authz/cmd/openapi-authz@latest
 ```
 
-This will install the `openapi-authz` CLI in your `$GOBIN` (typically `$GOPATH/bin` or `$HOME/go/bin`).
+## Usage
+
+From the repository root:
+
+```bash
+go run ./cmd/openapi-authz \
+	-in ./openapi.yaml \
+	-out ./internal/http/authpolicy.gen.go \
+	-pkg httproutes
+```
+
+You can also wire this up with `go generate`, e.g. in a Go file under
+`internal/http`:
+
+```go
+//go:generate go run ./cmd/openapi-authz -in ../../openapi.yaml -out ./authpolicy.gen.go -pkg httproutes
+```
+
+You can then wire a middleware that looks up `Policies[RouteKey{Method, Path}]`
+using `chi.RouteContext(r.Context()).RoutePattern()` to decide whether a
+request should require a token and which roles/scopes are allowed.
 
 ## What it generates
 
@@ -165,14 +185,12 @@ middleware:
 ```go
 r := chi.NewRouter()
 
-// 1. Your JWT validation middleware (sets *Claims in context).
-r.Use(JWTValidationMiddleware)
-
-// 2. openapi-authz-generated policy middleware.
-r.Use(httproutes.AuthPolicyMiddleware)
-
-// 3. Mount your handlers (generated or manual) here.
-// api.HandlerWithOptions(server, api.ChiServerOptions{BaseRouter: r})
+h := api.HandlerWithOptions(server, api.ChiServerOptions{
+    BaseRouter: r,
+    Middlewares: []api.MiddlewareFunc{
+        httproutes.AuthPolicyMiddleware,
+    },
+})
 ```
 
 ## Security conventions
@@ -195,27 +213,6 @@ stripped); all other strings in the BearerAuth list are treated as scopes.
 Only the `BearerAuth` security scheme is inspected; other schemes are ignored
 for now.
 
-## Usage
-
-From the repository root:
-
-```bash
-go run ./cmd/openapi-authz \
-	-in ./openapi.yaml \
-	-out ./internal/http/authpolicy.gen.go \
-	-pkg httproutes
-```
-
-You can also wire this up with `go generate`, e.g. in a Go file under
-`internal/http`:
-
-```go
-//go:generate go run ./cmd/openapi-authz -in ../../openapi.yaml -out ./authpolicy.gen.go -pkg httproutes
-```
-
-You can then wire a middleware that looks up `Policies[RouteKey{Method, Path}]`
-using `chi.RouteContext(r.Context()).RoutePattern()` to decide whether a
-request should require a token and which roles/scopes are allowed.
 
 ## Testing
 
