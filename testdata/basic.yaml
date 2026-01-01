@@ -1,0 +1,35 @@
+openapi: 3.0.0
+info:
+  title: Basic Auth Policy Test
+  version: 1.0.0
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+paths:
+  /public:
+    get:
+      summary: Public endpoint
+      # no security -> public
+
+  /user:
+    get:
+      summary: Any authenticated user
+      security:
+        - BearerAuth: []
+
+  /admin:
+    delete:
+      summary: Admin-only operation
+      security:
+        - BearerAuth: ["role:admin"]
+
+  /scoped:
+    post:
+      summary: Scoped operation
+      security:
+        - BearerAuth: ["vegetable:write"]
