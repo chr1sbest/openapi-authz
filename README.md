@@ -3,15 +3,7 @@
 `openapi-authz` is a small tool that reads an OpenAPI v3 specification and
 produces Go code describing authorization requirements per route.
 
-## Install
-
-```bash
-go install github.com/chr1sbest/openapi-authz/cmd/openapi-authz@latest
-```
-
-This will install the `openapi-authz` CLI in your `$GOBIN` (typically `$GOPATH/bin` or `$HOME/go/bin`).
-
-## Why this exists
+## Purpose
 
 OpenAPI already declares which operations require auth via `security`, but
 servers often still hard-code auth middleware per route, which is brittle and
@@ -26,6 +18,15 @@ middleware can then, for each request:
 
 This keeps the **spec as the source of truth** for protection, while Go code
 focuses on validating tokens and applying policies in one place.
+
+
+## Install
+
+```bash
+go install github.com/chr1sbest/openapi-authz/cmd/openapi-authz@latest
+```
+
+This will install the `openapi-authz` CLI in your `$GOBIN` (typically `$GOPATH/bin` or `$HOME/go/bin`).
 
 ## What it generates
 
@@ -232,9 +233,6 @@ Run tests with:
 ```bash
 go test ./...
 ```
-
-This directory is designed so it can be extracted to its own repository later
-(e.g. `github.com/chr1sbest/spec-auth-gen`) with minimal changes.
 
 ## License
 
