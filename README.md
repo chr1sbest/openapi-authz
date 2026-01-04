@@ -1,13 +1,12 @@
 # openapi-authz
 
-`openapi-authz` generates a Go map from your OpenAPI 3.x spec that tells your
-middleware exactly which routes require authentication and optionally what authorization
+Generate a Go map from your OpenAPI 3.x spec that tells your middleware exactly which routes require authentication and optionally what authorization
 policies are required on those authenticated routes.
 
 ## Purpose
 
 OpenAPI 3.x specs can declare which operations require auth via `security`, but generated servers
-often hardcode auth middleware per route. This can be brittle and easy to drift out of sync with the spec.
+often hardcode auth middleware per route or validate requests at runtime (via openapi3filter). This can be brittle and easy to drift out of sync with the spec.
 
 `openapi-authz` turns your spec into a typed `RouteKey -> AuthPolicy` map that can be consumed by middleware.
 This keeps the **OpenAPI spec as the single source of truth**, allowing build-time validation of your spec and server.
@@ -96,14 +95,11 @@ validation library. It can also enforce OpenAPI `security` by calling an
 `AuthenticationFunc`, but using it for auth typically means opting into its
 request-validation pipeline.
 
-`openapi-authz` is focused only on deriving auth *policies* from your spec:
+`openapi-authz` is focused only on deriving auth *policies* from your spec. There are three benefits:
 
-- **Works with existing middleware**
-  - Keep JWT validation, claims types, custom error bodies, logging/tracing, etc. in your normal HTTP middleware.
-- **No per-request schema validation required**
-  - Auth decisions come from a generated map lookup, not request/response schema validation.
-- **Build-time artifact you can diff and test**
-  - Generated `Policies` makes “spec drives auth” concrete in code review and tests.
+1. **Works with existing middleware**. Keep JWT validation, claims types, custom error bodies, logging/tracing, etc. in your normal HTTP middleware.
+1. **No per-request schema validation required**. Auth decisions come from a generated map lookup, not request/response schema validation.
+1. **Build-time artifact you can diff and test**. Generated `Policies` makes “spec drives auth” concrete in code review and tests.
 
 You can still use `openapi3filter` for request/response validation if you want; `openapi-authz` is complementary.
 
