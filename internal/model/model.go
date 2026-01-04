@@ -22,3 +22,9 @@ type AuthPolicy struct {
 type Config struct {
 	Policies map[RouteKey]AuthPolicy
 }
+
+// Lookup returns the AuthPolicy for the given method and path.
+func (c *Config) Lookup(method, path string) (AuthPolicy, bool) {
+	p, ok := c.Policies[RouteKey{Method: method, Path: path}]
+	return p, ok
+}

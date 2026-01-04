@@ -1,6 +1,6 @@
 # openapi-authz
 
-`openapi-authz` is a small tool that reads an OpenAPI v3 specification and
+`openapi-authz` is a tool that reads an OpenAPI v3 specification and
 produces Go code describing authorization requirements per route.
 
 ## Purpose
@@ -22,11 +22,14 @@ focuses on validating tokens and applying policies in one place.
 
 ## Install
 
+**CLI:**
 ```bash
 go install github.com/chr1sbest/openapi-authz/cmd/openapi-authz@latest
 ```
 
 ## Usage
+
+### CLI
 
 From the repository root:
 
@@ -47,6 +50,60 @@ You can also wire this up with `go generate`, e.g. in a Go file under
 You can then wire a middleware that looks up `Policies[RouteKey{Method, Path}]`
 using `chi.RouteContext(r.Context()).RoutePattern()` to decide whether a
 request should require a token and which roles/scopes are allowed.
+
+### Library API
+
+For programmatic use, import the `pkg/authz` package:
+
+```go
+import "github.com/chr1sbest/openapi-authz/pkg/authz"
+```
+
+**Parse from file:**
+```go
+cfg, err := authz.ParseFile("openapi.yaml")
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+**Parse from io.Reader (useful for embedded specs or testing):**
+```go
+spec := strings.NewReader(`
+openapi: 3.0.0
+paths:
+  /admin:
+    delete:
+      security:
+        - BearerAuth: ["role:admin"]
+`)
+
+cfg, err := authz.Parse(spec)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+**Generate Go code:**
+```go
+code, err := authz.Generate("httproutes", cfg)
+if err != nil {
+    log.Fatal(err)
+}
+os.WriteFile("authpolicy.gen.go", code, 0644)
+```
+
+**Access policies directly (without code generation):**
+```go
+cfg, _ := authz.ParseFile("openapi.yaml")
+
+// Using the Lookup helper
+if policy, ok := cfg.Lookup("DELETE", "/admin"); ok {
+    fmt.Printf("RequireAuth: %v, Roles: %v\n", policy.RequireAuth, policy.Roles)
+}
+```
+
+> **Note:** Both YAML and JSON OpenAPI specs are supported.
 
 ## What it generates
 
@@ -204,14 +261,24 @@ We interpret OpenAPI `security` blocks with the following conventions:
 - **Role-based endpoint**
   - `security: [ { BearerAuth: ["role:admin"] } ]` → `RequireAuth = true`, `Roles = ["admin"]`.
   
-- **Scope-based endpoint (future-ready)**
-  - `security: [ { BearerAuth: ["vegetable:write"] } ]` → `RequireAuth = true`, `Scopes = ["vegetable:write"]`.
+- **Scope-based endpoint**
+  - `security: [ { OAuth2: ["read:users", "write:users"] } ]` → `RequireAuth = true`, `Scopes = ["read:users", "write:users"]`.
 
 Strings prefixed with `role:` are treated as roles (the `role:` prefix is
-stripped); all other strings in the BearerAuth list are treated as scopes.
+stripped); all other strings are treated as scopes.
 
-Only the `BearerAuth` security scheme is inspected; other schemes are ignored
-for now.
+### Supported security schemes
+
+The following security scheme names are recognized:
+
+| Scheme | Variants | Notes |
+|--------|----------|-------|
+| **BearerAuth** | `bearerAuth` | JWT/Bearer token authentication |
+| **OAuth2** | `oauth2` | OAuth 2.0 flows with optional scopes |
+| **ApiKeyAuth** | `apiKeyAuth`, `api_key` | API key authentication (header, query, or cookie) |
+
+If your spec uses a different scheme name, rename it to one of the supported
+variants or open an issue to request support.
 
 
 ## Testing

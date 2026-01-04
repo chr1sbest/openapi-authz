@@ -9,11 +9,20 @@ import (
 	"github.com/chr1sbest/openapi-authz/internal/parser"
 )
 
+// version is set at build time via -ldflags "-X main.version=v1.0.0"
+var version = "dev"
+
 func main() {
 	in := flag.String("in", "", "Path to OpenAPI YAML file")
 	out := flag.String("out", "", "Path to output Go file")
 	pkg := flag.String("pkg", "httproutes", "Package name for generated code")
+	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 
 	if *in == "" || *out == "" {
 		fmt.Fprintln(os.Stderr, "-in and -out are required")

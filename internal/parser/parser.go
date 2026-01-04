@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -13,7 +14,18 @@ import (
 // requirements into a Config structure. It focuses on paths, methods and
 // security blocks; it does not attempt to fully model the entire spec.
 func ParseConfig(path string) (*model.Config, error) {
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open spec: %w", err)
+	}
+	defer f.Close()
+	return ParseConfigFromReader(f)
+}
+
+// ParseConfigFromReader reads an OpenAPI v3 YAML document from r and extracts
+// authorization requirements into a Config structure.
+func ParseConfigFromReader(r io.Reader) (*model.Config, error) {
+	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("read spec: %w", err)
 	}
@@ -97,15 +109,22 @@ type operation struct {
 
 type securityRequirement map[string][]string
 
-// derivePolicy determines the AuthPolicy for an operation, taking into account
-// operation-level and root-level security requirements. The precedence rules
-// follow the OpenAPI specification: operation.security overrides root.security
-// when present.
+// supportedSchemes lists the security scheme names we recognize.
+// BearerAuth and OAuth2 typically carry scopes; ApiKeyAuth usually does not.
+var supportedSchemes = map[string]bool{
+	"BearerAuth": true,
+	"OAuth2":     true,
+	"ApiKeyAuth": true,
+	"bearerAuth": true, // common lowercase variant
+	"oauth2":     true,
+	"apiKeyAuth": true,
+	"api_key":    true, // another common variant
+}
 
 // derivePolicy determines the AuthPolicy for an operation, taking into account
 // operation-level and root-level security requirements. The precedence rules
 // follow the OpenAPI specification: operation.security overrides root.security
-// when present. If security is present but no BearerAuth requirement is found,
+// when present. If security is present but no supported scheme is found,
 // an error is returned to avoid silently misconfiguring protection.
 func derivePolicy(root *openapiRoot, op *operation) (model.AuthPolicy, error) {
 	sec := op.Security
@@ -125,17 +144,17 @@ func derivePolicy(root *openapiRoot, op *operation) (model.AuthPolicy, error) {
 
 	policy := model.AuthPolicy{RequireAuth: false}
 
-	// We only look at the first BearerAuth requirement for now. If there are
-	// multiple different security schemes, we conservatively require auth.
+	// Look for the first supported security scheme. If there are multiple
+	// different security schemes, we use the first supported one found.
 	for _, req := range sec {
 		for scheme, scopes := range req {
-			if scheme == "BearerAuth" {
+			if supportedSchemes[scheme] {
 				policy.RequireAuth = true
 				// Convention: scopes starting with "role:" are roles; others are scopes.
 				for _, s := range scopes {
 					if len(s) > 5 && s[:5] == "role:" {
 						policy.Roles = append(policy.Roles, s[5:])
-					} else {
+					} else if s != "" {
 						policy.Scopes = append(policy.Scopes, s)
 					}
 				}
@@ -144,7 +163,7 @@ func derivePolicy(root *openapiRoot, op *operation) (model.AuthPolicy, error) {
 		}
 	}
 
-	// Security requirements exist but none reference BearerAuth: treat as
+	// Security requirements exist but none reference a supported scheme: treat as
 	// configuration error rather than silently public.
-	return model.AuthPolicy{}, fmt.Errorf("security section present but no BearerAuth requirement found")
+	return model.AuthPolicy{}, fmt.Errorf("security section present but no supported scheme found (supported: BearerAuth, OAuth2, ApiKeyAuth)")
 }
