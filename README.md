@@ -89,6 +89,24 @@ var Policies = map[RouteKey]AuthPolicy{
 This map can be consumed by HTTP middleware to enforce authentication and
 authorization decisions at runtime.
 
+## Why not `openapi3filter` for auth?
+
+`openapi3filter` (from `github.com/getkin/kin-openapi`) is primarily a request/response
+validation library. It can also enforce OpenAPI `security` by calling an
+`AuthenticationFunc`, but using it for auth typically means opting into its
+request-validation pipeline.
+
+`openapi-authz` is focused only on deriving auth *policies* from your spec:
+
+- **Works with existing middleware**
+  - Keep JWT validation, claims types, custom error bodies, logging/tracing, etc. in your normal HTTP middleware.
+- **No per-request schema validation required**
+  - Auth decisions come from a generated map lookup, not request/response schema validation.
+- **Build-time artifact you can diff and test**
+  - Generated `Policies` makes “spec drives auth” concrete in code review and tests.
+
+You can still use `openapi3filter` for request/response validation if you want; `openapi-authz` is complementary.
+
 
 ## Security conventions
 
