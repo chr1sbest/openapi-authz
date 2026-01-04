@@ -1,25 +1,27 @@
 # openapi-authz
 
-`openapi-authz` generates a Go map from your OpenAPI spec that tells your
-middleware exactly which routes require authentication and what authorization
+`openapi-authz` generates a Go map from your OpenAPI 3.x spec that tells your
+middleware exactly which routes require authentication and optionally what authorization
 policies are required on those authenticated routes.
-
-See the [Swagger Authentication docs](https://swagger.io/docs/specification/v3_0/authentication/) for more context on how these are defined in your spec.
 
 ## Purpose
 
-OpenAPI Specs can declare which operations require auth via `security`, but generated servers
+OpenAPI 3.x specs can declare which operations require auth via `security`, but generated servers
 often hardcode auth middleware per route. This can be brittle and easy to drift out of sync with the spec.
 
-`openapi-authz` turns your OpenAPI spec into a typed `RouteKey -> AuthPolicy`
-map that can be consumed by a centralized HTTP auth middleware.
+`openapi-authz` turns your spec into a typed `RouteKey -> AuthPolicy` map that can be consumed by middleware.
 This keeps the **OpenAPI spec as the single source of truth**, allowing build-time validation of your spec and server.
 
 ### Example
 
 The exact authentication implementation (JWT validation, claims type, etc.) is
-left to the consuming application, but a typical usage with `chi` might look
-like this:
+left to the consuming application, but you can see full working examples for
+popular frameworks in the [examples/](./examples) directory:
+
+- [Chi](./examples/chi/middleware.go)
+- [net/http](./examples/nethttp/middleware.go)
+
+A typical usage with `chi` might look like this:
 
 ```go
 r := chi.NewRouter()
@@ -32,56 +34,6 @@ h := api.HandlerWithOptions(server, api.ChiServerOptions{
 })
 ```
 
-Middleware is flexible and written by the developer, consuming the generated policies.
-
-```go
-// ... assumes GetClaims, HasAnyRole, etc. are defined
-
-// AuthPolicyMiddleware enforces Policies for each request
-// based on method and route pattern.
-func AuthPolicyMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		routeCtx := chi.RouteContext(r.Context())
-		if routeCtx == nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		key := RouteKey{
-			Method: r.Method,
-			Path:   routeCtx.RoutePattern(), // e.g. "/vegetables/{name}"
-		}
-
-		// Lookup the generated policies from openapi-authz
-		policy, ok := Policies[key]
-		if !ok || !policy.RequireAuth {
-			// Public or unknown route → pass through.
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		claims := GetClaims(r)
-		if claims == nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		// Role-based checks
-		if len(policy.Roles) > 0 && !claims.HasAnyRole(policy.Roles...) {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-
-		// Scope-based checks
-		if len(policy.Scopes) > 0 && !claims.HasAllScopes(policy.Scopes...) {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
-```
 ## Usage
 
 After generating policies with the CLI, wire in a middleware that enforces
@@ -149,12 +101,27 @@ for more context on how these are defined in your spec.
 - **Any authenticated user**
   - `security: [ { BearerAuth: [] } ]` → `RequireAuth = true`, no specific roles or scopes.
 - **Role-based endpoint**
-  - `security: [ { BearerAuth: ["role:admin"] } ]` → `RequireAuth = true`, `Roles = ["admin"]`.
+  - Use the `x-required-roles` extension (array of strings) on the operation or root.
+  - `x-required-roles: ["admin"]` → `RequireAuth = true` (if security is present), `Roles = ["admin"]`.
   
 - **Scope-based endpoint**
   - `security: [ { OAuth2: ["read:users", "write:users"] } ]` → `RequireAuth = true`, `Scopes = ["read:users", "write:users"]`.
-Strings prefixed with `role:` are treated as roles (the `role:` prefix is
-stripped); all other strings are treated as scopes.
+
+For spec compliance, **BearerAuth** and **ApiKeyAuth** security requirements must use an empty scopes list (`[]`).
+
+### Authorization semantics
+
+- **Roles**
+  - If `Roles` is non-empty, the request is allowed if the caller has **any** of the required roles.
+- **Scopes (OAuth2)**
+  - If `Scopes` is non-empty, the request is allowed if the caller has **all** of the required scopes.
+
+### Multiple security schemes
+
+If an operation declares multiple security schemes, `openapi-authz` currently uses the first supported scheme it finds and generates policy from that.
+It does not model "AND" requirements (multiple schemes in the same security requirement object).
+
+We support `x-required-roles` at both the root (global) and operation levels. Operation-level roles override global ones.
 
 ### Supported security schemes
 

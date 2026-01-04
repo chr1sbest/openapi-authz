@@ -9,8 +9,7 @@ type RouteKey struct {
 // AuthPolicy represents the authorization requirements for a single operation.
 //
 // Roles is a coarse-grained list of roles that are allowed to access the
-// operation. Scopes are more granular permissions and are reserved for future
-// use.
+// operation. Scopes are more granular permissions, typically used with OAuth2.
 type AuthPolicy struct {
 	RequireAuth bool
 	Roles       []string

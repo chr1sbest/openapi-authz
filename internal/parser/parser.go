@@ -62,8 +62,9 @@ func ParseConfigFromReader(r io.Reader) (*model.Config, error) {
 // openapiRoot is a minimal representation of the parts of an OpenAPI v3
 // document we care about: global security and per-path operations.
 type openapiRoot struct {
-	Security []securityRequirement `yaml:"security"`
-	Paths    map[string]*pathItem  `yaml:"paths"`
+	Security       []securityRequirement `yaml:"security"`
+	XRequiredRoles []string              `yaml:"x-required-roles"`
+	Paths          map[string]*pathItem  `yaml:"paths"`
 }
 
 type pathItem struct {
@@ -104,7 +105,8 @@ func (p *pathItem) Operations() map[string]*operation {
 }
 
 type operation struct {
-	Security []securityRequirement `yaml:"security"`
+	Security       []securityRequirement `yaml:"security"`
+	XRequiredRoles []string              `yaml:"x-required-roles"`
 }
 
 type securityRequirement map[string][]string
@@ -121,15 +123,37 @@ var supportedSchemes = map[string]bool{
 	"api_key":    true, // another common variant
 }
 
+var scopeCapableSchemes = map[string]bool{
+	"OAuth2": true,
+	"oauth2": true,
+}
+
 // derivePolicy determines the AuthPolicy for an operation, taking into account
 // operation-level and root-level security requirements. The precedence rules
 // follow the OpenAPI specification: operation.security overrides root.security
 // when present. If security is present but no supported scheme is found,
 // an error is returned to avoid silently misconfiguring protection.
 func derivePolicy(root *openapiRoot, op *operation) (model.AuthPolicy, error) {
-	sec := op.Security
-	if sec == nil {
+	var sec []securityRequirement
+	var roles []string
+
+	if op.Security != nil {
+		sec = op.Security
+		roles = op.XRequiredRoles
+	} else {
 		sec = root.Security
+		if op.XRequiredRoles != nil {
+			roles = op.XRequiredRoles
+		} else {
+			roles = root.XRequiredRoles
+		}
+	}
+
+	// If x-required-roles is set, the operation must not be public.
+	if len(roles) > 0 {
+		if sec == nil || len(sec) == 0 {
+			return model.AuthPolicy{}, fmt.Errorf("x-required-roles is set but no security requirement is defined")
+		}
 	}
 
 	// If there is an explicit empty array, the operation is public.
@@ -149,12 +173,13 @@ func derivePolicy(root *openapiRoot, op *operation) (model.AuthPolicy, error) {
 	for _, req := range sec {
 		for scheme, scopes := range req {
 			if supportedSchemes[scheme] {
+				if len(scopes) > 0 && !scopeCapableSchemes[scheme] {
+					return model.AuthPolicy{}, fmt.Errorf("%s security scheme must not include scopes", scheme)
+				}
 				policy.RequireAuth = true
-				// Convention: scopes starting with "role:" are roles; others are scopes.
+				policy.Roles = roles
 				for _, s := range scopes {
-					if len(s) > 5 && s[:5] == "role:" {
-						policy.Roles = append(policy.Roles, s[5:])
-					} else if s != "" {
+					if s != "" {
 						policy.Scopes = append(policy.Scopes, s)
 					}
 				}

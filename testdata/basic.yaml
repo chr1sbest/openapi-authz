@@ -9,6 +9,13 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    OAuth2:
+      type: oauth2
+      flows:
+        implicit:
+          authorizationUrl: https://example.com/oauth/authorize
+          scopes:
+            vegetable:write: write vegetables
 
 paths:
   /public:
@@ -26,10 +33,12 @@ paths:
     delete:
       summary: Admin-only operation
       security:
-        - BearerAuth: ["role:admin"]
+        - BearerAuth: []
+      x-required-roles:
+        - admin
 
   /scoped:
     post:
       summary: Scoped operation
       security:
-        - BearerAuth: ["vegetable:write"]
+        - OAuth2: ["vegetable:write"]

@@ -73,14 +73,43 @@ paths:
     delete:
       summary: Admin-only
       security:
-        - BearerAuth: ["role:admin"]
+        - BearerAuth: []
+      x-required-roles:
+        - admin
 `,
 			expected: []expectedPolicy{
 				{"DELETE", "/admin", model.AuthPolicy{RequireAuth: true, Roles: []string{"admin"}}},
 			},
 		},
 		{
-			name: "BearerAuth - with scope",
+			name: "x-required-roles without security (invalid)",
+			yaml: `
+openapi: 3.0.0
+paths:
+  /admin:
+    delete:
+      summary: Admin-only
+      x-required-roles:
+        - admin
+`,
+			wantErr: true,
+		},
+		{
+			name: "x-required-roles with explicit empty security (invalid)",
+			yaml: `
+openapi: 3.0.0
+paths:
+  /admin:
+    delete:
+      summary: Admin-only
+      security: []
+      x-required-roles:
+        - admin
+`,
+			wantErr: true,
+		},
+		{
+			name: "BearerAuth - with scope (invalid)",
 			yaml: `
 openapi: 3.0.0
 paths:
@@ -90,9 +119,7 @@ paths:
       security:
         - BearerAuth: ["vegetable:write"]
 `,
-			expected: []expectedPolicy{
-				{"POST", "/scoped", model.AuthPolicy{RequireAuth: true, Scopes: []string{"vegetable:write"}}},
-			},
+			wantErr: true,
 		},
 		{
 			name: "OAuth2 - any authenticated user",
@@ -133,7 +160,9 @@ paths:
     delete:
       summary: OAuth2 admin
       security:
-        - OAuth2: ["role:admin"]
+        - OAuth2: []
+      x-required-roles:
+        - admin
 `,
 			expected: []expectedPolicy{
 				{"DELETE", "/oauth-admin", model.AuthPolicy{RequireAuth: true, Roles: []string{"admin"}}},
